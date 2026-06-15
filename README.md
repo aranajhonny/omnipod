@@ -77,6 +77,8 @@ chainlit run app.py
 
 No YouTube API key required. Output goes to `data/transcripts/`.
 
+<img width="617" height="606" alt="Captura de pantalla 2026-06-15 a la(s) 12 06 41 a m" src="https://github.com/user-attachments/assets/1f76e948-dc7c-421a-9c04-e77f64206b41" />
+
 ```bash
 # Clone and scrape all 701 transcripts
 cd lex_podcast
@@ -103,7 +105,6 @@ python run.py pipeline
 | Full ingest (139K chunks) | ~8 min |
 
 <img width="790" height="459" alt="Captura de pantalla 2026-06-14 a la(s) 11 32 06 p m" src="https://github.com/user-attachments/assets/04303c01-0dbe-4916-9374-8f8e58a780b8" />
-
 ---
 
 <p align="center">
