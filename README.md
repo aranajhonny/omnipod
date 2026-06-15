@@ -1,4 +1,4 @@
-# 🎙️ **OmniPod** — Chat with 701 Podcast Transcripts
+# 🎙️ **OmniPod** — Chat with Podcast Transcripts
 
 > Turn any podcast corpus into a conversational AI. Minimizes hallucinations via source grounding — every answer cites transcripts.
 
@@ -35,7 +35,7 @@
 ║         R E T R I E V A L   (sentence-transformers MPS GPU)     ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║  Query → bge-small-en-v1.5 384d → Qdrant cosine search          ║
-║  19,140 indexed chunks · 701 Lex Fridman transcripts            ║
+║  19,140 indexed chunks · Lex Fridman transcripts            ║
 ║  Guest filter via known-guests list from Qdrant                  ║
 ╚══════════════════════════════════════════════════════════════════╝
                          │
@@ -61,7 +61,7 @@ chainlit run app.py
 
 | Metric | Value |
 |--------|-------|
-| Transcripts | 701 (Lex Fridman Podcast, scraped via `transcript_fetcher.py`) |
+| Transcripts | (Lex Fridman Podcast, scraped via `transcript_fetcher.py`) |
 | Chunks indexed | 19,140 (512 chars, 128 overlap) |
 | Vector dimensions | 384 (bge-small-en-v1.5, MPS GPU) |
 | Scraping | lexfridman.com site transcripts + YouTube API (`core/transcript_fetcher.py`) |
