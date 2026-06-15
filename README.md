@@ -75,7 +75,7 @@ chainlit run app.py
 | Agent | Pure Python async | classify_intent() + handlers |
 | Vector DB | Qdrant (Docker) | Cosine similarity, payload filters |
 | Embeddings | sentence-transformers | bge-small-en-v1.5, runs on MPS GPU |
-| Chunking | RecursiveCharacterTextSplitter | 1000 chars, 200 overlap |
+| Chunking | RecursiveCharacterTextSplitter | 512 chars, 128 overlap |
 
 ## Features
 
