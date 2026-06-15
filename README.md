@@ -1,3 +1,4 @@
+<img width="790" height="459" alt="Captura de pantalla 2026-06-14 a la(s) 11 32 06 p m" src="https://github.com/user-attachments/assets/57b7b344-2d1e-4b55-8464-95a43b6cbc24" />
 # 🎙️ **OmniPod** — Chat with Podcast Transcripts
 
 > Turn any podcast corpus into a conversational AI. Minimizes hallucinations via source grounding — every answer cites transcripts.
@@ -98,6 +99,8 @@ Both outputs are `.txt` files. Then `python ingest.py --rebuild` chunks and inde
 | Qdrant search | ~50ms (cosine, 19K points) |
 | LLM response | ~2-5s (DeepSeek V4 Flash) |
 | Full ingest (139K chunks) | ~8 min |
+
+<img width="790" height="459" alt="Captura de pantalla 2026-06-14 a la(s) 11 32 06 p m" src="https://github.com/user-attachments/assets/04303c01-0dbe-4916-9374-8f8e58a780b8" />
 
 ---
 
