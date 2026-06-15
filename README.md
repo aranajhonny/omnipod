@@ -64,7 +64,17 @@ chainlit run app.py
 | Transcripts | 701 (Lex Fridman Podcast, scraped via `transcript_fetcher.py`) |
 | Chunks indexed | 19,140 (512 chars, 128 overlap) |
 | Vector dimensions | 384 (bge-small-en-v1.5, MPS GPU) |
+| Scraping | lexfridman.com site transcripts + YouTube API (`core/transcript_fetcher.py`) |
 | Source files | 1,138 lines Python across 9 files |
+
+## Scraper
+
+`core/transcript_fetcher.py` downloads transcripts from two sources:
+
+1. **lexfridman.com** — scrapes official transcript pages via requests + BeautifulSoup. Covers ~114 episodes.
+2. **YouTube API** — for episodes without site transcripts, calls `youtubetranscript.pro` API to fetch auto-generated captions. Covers ~382 more episodes.
+
+Both outputs are `.txt` files in `data/transcripts/`. Then `python ingest.py --rebuild` chunks and indexes them into Qdrant.
 
 ## Example Queries
 
