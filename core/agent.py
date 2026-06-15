@@ -1,77 +1,15 @@
-"""LangGraph agent for OmniPod.
+"""OmniPod agent — Intent router + RAG + Synthesis + Book generation.
 
-State machine with three intent routes:
-  - factual:    Standard RAG (retrieve → answer)
-  - synthetic:  Map-reduce with sub-queries → consolidated summary
-  - generative: Book agent (planner → loop [search + write] → compiler)
+Removed LangGraph overhead. Pure async functions with explicit routing.
 """
 
 import json
-from typing import Annotated, Literal, Sequence, TypedDict
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from langgraph.graph import END, StateGraph
-from langgraph.graph.message import add_messages
+from langchain_core.messages import HumanMessage
 
 from core.config import HYBRID_TOP_K, RERANKER_TOP_K, SUB_QUERIES_COUNT
-from core.llm import SYSTEM_PROMPT, get_json_llm, get_llm
+from core.llm import SYSTEM_PROMPT, get_json_llm, get_llm, verify_groundedness
 from core.vectorstore import get_qdrant_client, hybrid_search
-
-# ── State Types ──────────────────────────────────────────────────
-
-
-class AgentState(TypedDict):
-    """Main state passed through the graph nodes."""
-
-    messages: Annotated[Sequence[BaseMessage], add_messages]
-    intent: str
-    query: str
-    contexts: list
-    sub_queries: list[str]
-    book_title: str
-    book_plan: list[dict]  # [{"title": "...", "description": "..."}, ...]
-    current_section_idx: int
-    book_sections: dict  # title -> content
-    final_answer: str
-
-
-# ── Intent Router ────────────────────────────────────────────────
-
-ROUTER_PROMPT = """You are an intent classifier for a podcast knowledge base.
-Given a user query, classify it into one of these categories:
-
-- "factual": Simple queries about what a specific guest said about a topic.
-  Examples: "What did Andrej Karpathy say about AI?", "Does Huberman recommend cold exposure?"
-
-- "synthetic": Multi-source comparison or summary queries.
-  Examples: "Summarize opinions on AI safety across all guests", "Compare guests' views on meditation"
-
-- "generative": Long-form content generation requests like books or essays.
-  Examples: "Write a book about the future of AI", "Create a comprehensive essay on human consciousness"
-
-Respond in JSON format: {{"intent": "factual" | "synthetic" | "generative", "reasoning": "short explanation"}}
-
-User query: {query}"""
-
-
-def router_node(state: AgentState) -> AgentState:
-    query = state["messages"][-1].content if state["messages"] else ""
-    state["query"] = query
-
-    llm = get_json_llm()
-    response = llm.invoke([HumanMessage(content=ROUTER_PROMPT.format(query=query))])
-
-    try:
-        result = json.loads(response.content)
-        intent = result.get("intent", "factual")
-    except (json.JSONDecodeError, AttributeError):
-        intent = "factual"
-
-    state["intent"] = intent
-    return state
-
-
-# ── Retrieval ────────────────────────────────────────────────────
 
 _qdrant_client = None
 
@@ -83,6 +21,9 @@ def _get_client():
     return _qdrant_client
 
 
+# ── Retrieval ────────────────────────────────────────────────────
+
+
 def retrieve_context(
     query: str, top_k: int = HYBRID_TOP_K, guest_filter: str | None = None
 ) -> list[dict]:
@@ -90,11 +31,7 @@ def retrieve_context(
     return hybrid_search(client, query, top_k=top_k, guest_filter=guest_filter)
 
 
-# ── Simple ranking (BM25 scores from Qdrant) ──────────────────────
-
-
-def rerank(query: str, results: list[dict], top_k: int = RERANKER_TOP_K) -> list[dict]:
-    """Results are already scored by BM25, just take top_k."""
+def rerank(results: list[dict], top_k: int = RERANKER_TOP_K) -> list[dict]:
     return results[:top_k]
 
 
@@ -109,14 +46,15 @@ def _format_context(ctx: list[dict]) -> str:
     return "\n---\n".join(parts)
 
 
-# ── Factual Node ─────────────────────────────────────────────────
+# ── Guest extraction (heuristic) ────────────────────────────────
 
 
-def _extract_guest(query: str) -> str | None:
-    """Try to extract a guest name from the query."""
+def extract_guest(query: str) -> str | None:
+    """Extract potential guest name from a query using pattern matching.
+    This is a simple heuristic, not a full NER system.
+    """
     import re
 
-    # Patterns like "what did X say about...", "what does X think...", "X sobre..."
     patterns = [
         r"(?:did|does|would|is|are|was|were)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:say|think|mean|believe|recommend|talk)",
         r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:said|mentioned|talked|thinks|believes|recommends)",
@@ -128,6 +66,32 @@ def _extract_guest(query: str) -> str | None:
     return None
 
 
+# ── Intent router ───────────────────────────────────────────────
+
+ROUTER_PROMPT = """You are an intent classifier for a podcast knowledge base.
+Given a user query, classify it into one of these categories:
+
+- "factual": Simple queries about what a specific guest said about a topic.
+- "synthetic": Multi-source comparison or summary queries.
+- "generative": Long-form content generation requests like books or essays.
+
+Respond in JSON format: {{"intent": "factual" | "synthetic" | "generative"}}
+
+User query: {query}"""
+
+
+async def classify_intent(query: str) -> str:
+    """Classify query intent using the LLM."""
+    llm = get_json_llm()
+    response = llm.invoke([HumanMessage(content=ROUTER_PROMPT.format(query=query))])
+    try:
+        return json.loads(response.content).get("intent", "factual")
+    except (json.JSONDecodeError, AttributeError):
+        return "factual"
+
+
+# ── Factual RAG ─────────────────────────────────────────────────
+
 FACTUAL_PROMPT = """{system_prompt}
 
 Context from podcast transcripts:
@@ -137,24 +101,19 @@ Question: {query}
 
 Instructions:
 - Answer based STRICTLY on the context above.
-- If the context contains relevant information but NOT from the specific guest asked, mention what other guests said about the topic and note that the specific guest's views were not found.
-- If the context has NO relevant information at all, say: "This topic has not been discussed in the provided transcripts."
-- ALWAYS cite the source guest and title for each claim."""
+- If the context contains relevant information but NOT from the specific guest asked, say so.
+- If the context has NO relevant information, say: "This topic has not been discussed in the provided transcripts."
+- ALWAYS cite the source guest and title for every claim."""
 
 
-def factual_node(state: AgentState) -> AgentState:
-    query = state["query"]
-
-    # Try to extract a guest name and search with filter
-    guest = _extract_guest(query)
+async def answer_factual(query: str) -> dict:
+    """Standard RAG: retrieve → answer → verify groundedness."""
+    guest = extract_guest(query)
     if guest:
-        # Search within this guest's content first
         results = retrieve_context(query, guest_filter=guest)
         if len(results) < 2:
-            # Not enough from this guest, supplement with general search
-            general = retrieve_context(query)
-            # Merge, deduplicate by keeping guest-specific first
             seen = {r["text"][:100] for r in results}
+            general = retrieve_context(query)
             for r in general:
                 if r["text"][:100] not in seen:
                     seen.add(r["text"][:100])
@@ -163,9 +122,7 @@ def factual_node(state: AgentState) -> AgentState:
     else:
         results = retrieve_context(query)
 
-    top = rerank(query, results)
-    state["contexts"] = top
-
+    top = rerank(results)
     context_text = _format_context(top)
     prompt = FACTUAL_PROMPT.format(
         system_prompt=SYSTEM_PROMPT,
@@ -175,78 +132,66 @@ def factual_node(state: AgentState) -> AgentState:
 
     llm = get_llm()
     response = llm.invoke([HumanMessage(content=prompt)])
-    state["final_answer"] = response.content
-    state["messages"] = [AIMessage(content=response.content)]
-    return state
+    answer = response.content
+
+    # Groundedness verification
+    answer = verify_groundedness(answer, top)
+
+    return {"intent": "factual", "final_answer": answer, "contexts": top}
 
 
-# ── Synthetic Node (Map-Reduce) ──────────────────────────────────
+# ── Synthetic (Map-Reduce) ──────────────────────────────────────
 
-SUB_QUERIES_PROMPT = """You are a research assistant helping to gather comprehensive information.
-Given the user's query, generate {count} specific sub-questions that will help
-cover different aspects of the topic. Each sub-question should be answerable
-from podcast transcripts.
+SUB_QUERIES_PROMPT = """You are a research assistant. Given a query, generate {count} specific
+sub-questions that cover different aspects of the topic.
 
-Respond in JSON format: {{"sub_queries": ["sub_query_1", "sub_query_2", "sub_query_3"]}}
+Respond in JSON: {{"sub_queries": ["q1", "q2", "q3"]}}
 
-User query: {query}"""
+Query: {query}"""
 
 SYNTHESIS_PROMPT = """{system_prompt}
 
-You have been provided with multiple excerpts from podcast transcripts covering different
-aspects of the user's question. Synthesize the information into a coherent, well-structured
-answer that covers all the points.
-
-Context:
+Context from podcast transcripts:
 {context}
 
 Question: {query}
 
-Provide a comprehensive synthesis based strictly on the context above."""
+Synthesize the information into a coherent answer covering all points."""
 
 
-def _deduplicate_contexts(contexts: list[list[dict]]) -> list[dict]:
-    seen = set()
-    unique = []
-    for ctx_list in contexts:
-        for item in ctx_list:
-            text_hash = hash(item["text"][:200])
-            if text_hash not in seen:
-                seen.add(text_hash)
-                unique.append(item)
-    return unique
-
-
-def synthetic_node(state: AgentState) -> AgentState:
-    query = state["query"]
-
+async def answer_synthetic(query: str) -> dict:
+    """Map-Reduce: sub-queries → retrieve → dedup → synthesize."""
     llm = get_json_llm()
-    sub_response = llm.invoke(
+
+    # Generate sub-queries
+    resp = llm.invoke(
         [
             HumanMessage(
                 content=SUB_QUERIES_PROMPT.format(count=SUB_QUERIES_COUNT, query=query)
             )
         ]
     )
-
     try:
-        sub_data = json.loads(sub_response.content)
-        sub_queries = sub_data.get("sub_queries", [query])
+        sub_queries = json.loads(resp.content).get("sub_queries", [query])
     except (json.JSONDecodeError, AttributeError):
         sub_queries = [query]
 
-    state["sub_queries"] = sub_queries
-
-    all_contexts = []
+    # Retrieve for each
+    all_ctx = []
     for sq in sub_queries:
         results = retrieve_context(sq)
-        top = rerank(sq, results)
-        all_contexts.append(top)
+        all_ctx.extend(rerank(results))
 
-    unique_contexts = _deduplicate_contexts(all_contexts)
-    state["contexts"] = unique_contexts
+    # Dedup by text hash
+    seen = set()
+    unique = []
+    for item in all_ctx:
+        h = hash(item["text"][:200])
+        if h not in seen:
+            seen.add(h)
+            unique.append(item)
 
-    context_text = _format_context(unique_contexts)
+    context_text = _format_context(unique)
     prompt = SYNTHESIS_PROMPT.format(
         system_prompt=SYSTEM_PROMPT,
         context=context_text,
@@ -254,255 +199,120 @@ def synthetic_node(state: AgentState) -> AgentState:
     )
 
     response = llm.invoke([HumanMessage(content=prompt)])
-    state["final_answer"] = response.content
-    state["messages"] = [AIMessage(content=response.content)]
-    return state
+    answer = verify_groundedness(response.content, unique)
+
+    return {"intent": "synthetic", "final_answer": answer, "contexts": unique}
 
 
-# ── Generative Flow (Book Agent) ─────────────────────────────────
+# ── Generative (Book) ───────────────────────────────────────────
 
 PLANNER_PROMPT = """{system_prompt}
 
-You are a book planner. Based on the knowledge available in the podcast transcripts,
-create a detailed table of contents for a book about the following topic.
-
-Topic: {query}
-
-Generate 4-8 chapters/sections. For each section, provide a title and a brief
-description of what it should cover.
+You are a book planner. Create a table of contents for a book about: {query}
 
 Respond in JSON format:
 {{
     "title": "Book Title",
     "sections": [
-        {{"title": "Section 1 Title", "description": "What this section covers"}},
-        {{"title": "Section 2 Title", "description": "What this section covers"}}
+        {{"title": "Section 1", "description": "What it covers"}},
+        {{"title": "Section 2", "description": "What it covers"}}
     ]
 }}"""
 
 WRITER_PROMPT = """{system_prompt}
 
-You are writing a section of a book based on podcast transcripts.
+Book: {book_title}
+Section: {section_title}
+Description: {section_description}
 
-Book Title: {book_title}
-Section Title: {section_title}
-Section Description: {section_description}
-
-Research context from transcripts:
+Research context:
 {context}
 
-Write a comprehensive section based ONLY on the provided context.
-Include citations to the guest and title for each key claim.
-If the context does not contain enough information about this section,
-say so and write what you can based on what's available."""
+Write this section based ONLY on the provided context. Cite sources."""
 
 COMPILER_PROMPT = """{system_prompt}
 
-You are compiling a complete book from drafted sections.
+Compile a complete book from these sections.
 
-Book Title: {book_title}
+Title: {book_title}
 
 Sections:
 {sections}
 
-Write a complete book with:
-1. A compelling introduction that sets the stage
-2. All the sections seamlessly joined
-3. A conclusion that ties everything together
-
-Format it as a well-structured book with proper headings and paragraphs.
-Base everything STRICTLY on the content provided in the sections above."""
+Write: introduction, all sections, conclusion. Base everything on the content provided."""
 
 
-def planner_node(state: AgentState) -> AgentState:
-    """Generate a table of contents for the book."""
-    query = state["query"]
-
+async def answer_generative(query: str) -> dict:
+    """Book generation: planner → write sections → compile."""
     llm = get_json_llm()
-    response = llm.invoke(
+
+    # 1. Plan
+    resp = llm.invoke(
         [
             HumanMessage(
                 content=PLANNER_PROMPT.format(system_prompt=SYSTEM_PROMPT, query=query)
             )
         ]
     )
-
     try:
-        plan = json.loads(response.content)
+        plan = json.loads(resp.content)
+        book_title = plan.get("title", "Untitled")
         sections = plan.get("sections", [])
-        state["book_plan"] = sections
-        state["book_title"] = plan.get("title", "Untitled")
     except (json.JSONDecodeError, AttributeError):
-        state["book_plan"] = [{"title": "Overview", "description": query}]
-        state["book_title"] = "Untitled"
+        book_title = "Untitled"
+        sections = [{"title": "Overview", "description": query}]
 
-    state["current_section_idx"] = 0
-    state["book_sections"] = {}
-    return state
+    if not sections:
+        return {
+            "intent": "generative",
+            "final_answer": "No sections generated.",
+            "contexts": [],
+        }
 
+    # 2. Write each section
+    writer = get_llm()
+    drafted = {}
+    for section in sections:
+        title = section.get("title", "Section")
+        desc = section.get("description", "")
+        search_q = f"{title}: {desc}"
+        results = retrieve_context(search_q)
+        top = rerank(results)
+        ctx = _format_context(top)
 
-def section_writer_node(state: AgentState) -> AgentState:
-    """Research and write the current section."""
-    idx = state["current_section_idx"]
-    plan = state["book_plan"]
-
-    if idx >= len(plan):
-        # All sections done → go to compiler
-        return state
-
-    section = plan[idx]
-    section_title = section.get("title", f"Section {idx + 1}")
-    section_description = section.get("description", "")
-
-    # 1. Research: search for context related to this section
-    search_query = f"{section_title}: {section_description}"
-    results = retrieve_context(search_query)
-    top = rerank(search_query, results)
-    context_text = _format_context(top)
-
-    # 2. Write the section
-    prompt = WRITER_PROMPT.format(
-        system_prompt=SYSTEM_PROMPT,
-        book_title=state["book_title"],
-        section_title=section_title,
-        section_description=section_description,
-        context=context_text,
-    )
-
-    llm = get_llm()
-    response = llm.invoke([HumanMessage(content=prompt)])
-
-    # Store
-    sections = dict(state["book_sections"])
-    sections[section_title] = response.content
-    state["book_sections"] = sections
-    state["current_section_idx"] = idx + 1
-
-    return state
-
-
-def compile_node(state: AgentState) -> AgentState:
-    """Compile all sections into a complete book."""
-    sections = state.get("book_sections", {})
-    book_title = state.get("book_title", "Untitled")
-
-    sections_text = ""
-    for title, content in sections.items():
-        sections_text += f"\n\n## {title}\n\n{content}"
-
-    if not sections_text.strip():
-        state["final_answer"] = (
-            "No sections were generated. Please try again with a more specific topic."
+        prompt = WRITER_PROMPT.format(
+            system_prompt=SYSTEM_PROMPT,
+            book_title=book_title,
+            section_title=title,
+            section_description=desc,
+            context=ctx,
         )
-        state["messages"] = [AIMessage(content=state["final_answer"])]
-        return state
+        resp = writer.invoke([HumanMessage(content=prompt)])
+        drafted[title] = resp.content
 
-    llm = get_llm()
+    # 3. Compile
+    sections_text = "\n\n".join(f"## {t}\n\n{c}" for t, c in drafted.items())
     prompt = COMPILER_PROMPT.format(
         system_prompt=SYSTEM_PROMPT,
         book_title=book_title,
         sections=sections_text,
     )
+    compiler = get_llm()
+    resp = compiler.invoke([HumanMessage(content=prompt)])
 
-    response = llm.invoke([HumanMessage(content=prompt)])
-    state["final_answer"] = response.content
-    state["messages"] = [AIMessage(content=response.content)]
-    return state
-
-
-# ── Graph Construction ───────────────────────────────────────────
+    return {"intent": "generative", "final_answer": resp.content, "contexts": []}
 
 
-def decide_route(
-    state: AgentState,
-) -> Literal["factual_node", "synthetic_node", "generative_planner"]:
-    return {
-        "factual": "factual_node",
-        "synthetic": "synthetic_node",
-        "generative": "generative_planner",
-    }.get(state["intent"], "factual_node")
-
-
-def should_continue_generative(
-    state: AgentState,
-) -> Literal["section_writer_node", "generative_compiler"]:
-    """After writing a section, decide: more sections or compile?"""
-    idx = state["current_section_idx"]
-    plan = state["book_plan"]
-    if idx < len(plan):
-        return "section_writer_node"
-    return "generative_compiler"
-
-
-def build_graph():
-    """Build the complete LangGraph state machine with generative loop."""
-    workflow = StateGraph(AgentState)
-
-    workflow.add_node("router", router_node)
-    workflow.add_node("factual_node", factual_node)
-    workflow.add_node("synthetic_node", synthetic_node)
-    workflow.add_node("generative_planner", planner_node)
-    workflow.add_node("section_writer_node", section_writer_node)
-    workflow.add_node("generative_compiler", compile_node)
-
-    workflow.set_entry_point("router")
-
-    workflow.add_conditional_edges(
-        "router",
-        decide_route,
-        {
-            "factual_node": "factual_node",
-            "synthetic_node": "synthetic_node",
-            "generative_planner": "generative_planner",
-        },
-    )
-
-    workflow.add_edge("factual_node", END)
-    workflow.add_edge("synthetic_node", END)
-    workflow.add_edge("generative_planner", "section_writer_node")
-
-    # Generative loop: write section → check if more → compile or write next
-    workflow.add_conditional_edges(
-        "section_writer_node",
-        should_continue_generative,
-        {
-            "section_writer_node": "section_writer_node",
-            "generative_compiler": "generative_compiler",
-        },
-    )
-
-    workflow.add_edge("generative_compiler", END)
-
-    return workflow.compile()
-
-
-# ── Execution Helper ─────────────────────────────────────────────
-
-_graph = None
-
-
-def get_graph():
-    global _graph
-    if _graph is None:
-        _graph = build_graph()
-    return _graph
+# ── Public API ──────────────────────────────────────────────────
 
 
 async def run_agent(query: str) -> dict:
-    """Run the agent with a user query and return the result."""
-    graph = get_graph()
-    initial_state = AgentState(
-        messages=[HumanMessage(content=query)],
-        intent="",
-        query=query,
-        contexts=[],
-        sub_queries=[],
-        book_title="",
-        book_plan=[],
-        current_section_idx=0,
-        book_sections={},
-        final_answer="",
-    )
+    """Route query to appropriate handler based on intent."""
+    intent = await classify_intent(query)
 
-    result = await graph.ainvoke(initial_state)
-    return result
+    if intent == "synthetic":
+        return await answer_synthetic(query)
+    elif intent == "generative":
+        return await answer_generative(query)
+    else:
+        return await answer_factual(query)

@@ -19,8 +19,8 @@ COLLECTION_NAME = os.getenv("COLLECTION_NAME", "podcasts_hybrid")
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 
 # ── Chunking ─────────────────────────────────────────────────────
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
+CHUNK_SIZE = 512
+CHUNK_OVERLAP = 128
 
 # ── Retrieval ────────────────────────────────────────────────────
 HYBRID_TOP_K = 15

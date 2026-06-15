@@ -23,11 +23,11 @@
                          │
                          ▼
 ╔══════════════════════════════════════════════════════════════════╗
-║               L A N G G R A P H   A G E N T                     ║
+║               R O U T E R   +   H A N D L E R S                 ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  INTENT ROUTER ──┬── factual ──► RAG (top-5 chunks → answer)    ║
-║                  ├── synthetic ► Map-Reduce (sub-queries + dedup)║
-║                  └── generative► Book Agent (planner→writer→comp)║
+║  classify_intent() ──┬── answer_factual()   RAG (retrieve→ans)  ║
+║                      ├── answer_synthetic() Map-Reduce + dedup  ║
+║                      └── answer_generative() Book planner→writer║
 ╚══════════════════════════════════════════════════════════════════╝
                          │
                          ▼
@@ -72,7 +72,7 @@ chainlit run app.py
 |-----------|--------|-----|
 | UI | Chainlit | ChatGPT-like, native WebSockets |
 | LLM | DeepSeek V4 Flash | Fast, cheap, 128k context |
-| Agent | LangGraph | Cyclic state machine for book gen |
+| Agent | Pure Python async | classify_intent() + handlers |
 | Vector DB | Qdrant (Docker) | Cosine similarity, payload filters |
 | Embeddings | sentence-transformers | bge-small-en-v1.5, runs on MPS GPU |
 | Chunking | RecursiveCharacterTextSplitter | 1000 chars, 200 overlap |
@@ -101,7 +101,7 @@ chainlit run app.py
 ├── app.py              # Chainlit UI
 ├── ingest.py           # Chunk → embed → upload pipeline
 ├── core/
-│   ├── agent.py        # LangGraph state machine
+│   ├── agent.py        # Intent router + RAG/synthesis/book handlers
 │   ├── config.py       # Env vars & constants
 │   ├── llm.py          # DeepSeek client + system prompt
 │   ├── parser.py       # YouTube filename parser
