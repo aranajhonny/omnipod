@@ -29,4 +29,4 @@ SUB_QUERIES_COUNT = 3
 
 # ── Paths ────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TRANSCRIPTS_DIR = os.path.join(BASE_DIR, "lex_podcast", "data", "transcripts")
+TRANSCRIPTS_DIR = os.path.join(BASE_DIR, "data", "transcripts")

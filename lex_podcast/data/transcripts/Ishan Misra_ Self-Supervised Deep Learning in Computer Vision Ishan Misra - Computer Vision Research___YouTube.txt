@@ -1,1 +1,0 @@
-../../lex_podcast/data/transcripts/Ishan Misra_ Self-Supervised Deep Learning in Computer Vision Ishan Misra - Computer Vision Research___YouTube.txt

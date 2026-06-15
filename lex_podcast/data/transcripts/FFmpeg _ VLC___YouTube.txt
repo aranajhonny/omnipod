@@ -1,1 +1,0 @@
-../../lex_podcast/data/transcripts/FFmpeg _ VLC___YouTube.txt

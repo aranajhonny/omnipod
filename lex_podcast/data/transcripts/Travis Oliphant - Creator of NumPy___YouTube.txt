@@ -1,1 +1,0 @@
-../../lex_podcast/data/transcripts/Travis Oliphant - Creator of NumPy___YouTube.txt

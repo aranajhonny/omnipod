@@ -61,25 +61,28 @@ chainlit run app.py
 
 | Metric | Value |
 |--------|-------|
-| Transcripts | (Lex Fridman Podcast, scraped via `transcript_fetcher.py`) |
+| Transcripts | 701 Lex Fridman episodes — scrape with `core/transcript_fetcher.py` |
 | Chunks indexed | 19,140 (512 chars, 128 overlap) |
 | Vector dimensions | 384 (bge-small-en-v1.5, MPS GPU) |
-| Scraping | lexfridman.com site transcripts + YouTube API (`core/transcript_fetcher.py`) |
 | Source files | 1,138 lines Python across 9 files |
 
 ## Scraper
 
 `core/transcript_fetcher.py` downloads transcripts from two sources:
 
-1. **lexfridman.com** — scrapes official transcript pages via `requests` + `BeautifulSoup`. These are human-written transcripts for ~114 episodes.
+1. **lexfridman.com** — scrapes official transcript pages via `requests` + `BeautifulSoup`. ~114 episodes.
+2. **YouTube API** (free proxy) — for episodes without site transcripts, uses `youtubetranscript.pro`:
+   - `POST /api/youtube/metadata` → registers video ID
+   - `GET /api/youtube/transcript` → returns auto-captions as JSON
 
-2. **YouTube API** (free, no key needed) — for the ~382 episodes without site transcripts, it uses `youtubetranscript.pro`, a free proxy that extracts YouTube captions:
-   - `POST /api/youtube/metadata` — registers the video ID with the session
-   - `GET /api/youtube/transcript` — returns the auto-generated captions as JSON
-   
-   This avoids needing a YouTube Data API key or paid transcription service.
+No YouTube API key required. Output goes to `data/transcripts/`.
 
-Both outputs are `.txt` files. Then `python ingest.py --rebuild` chunks and indexes them into Qdrant.
+```bash
+# Clone and scrape all 701 transcripts
+cd lex_podcast
+pip install requests beautifulsoup4
+python run.py pipeline
+```
 
 ## Example Queries
 

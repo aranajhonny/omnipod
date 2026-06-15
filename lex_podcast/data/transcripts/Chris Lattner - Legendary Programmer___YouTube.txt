@@ -1,1 +1,0 @@
-../../lex_podcast/data/transcripts/Chris Lattner - Legendary Programmer___YouTube.txt

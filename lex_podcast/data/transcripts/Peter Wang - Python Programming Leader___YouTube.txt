@@ -1,1 +1,0 @@
-../../lex_podcast/data/transcripts/Peter Wang - Python Programming Leader___YouTube.txt

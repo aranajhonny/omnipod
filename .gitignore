@@ -17,6 +17,10 @@ chainlit.md
 # OS
 .DS_Store
 
+# Data
+data/
+lex_podcast/data/
+
 # IDE
 .vscode/
 .idea/

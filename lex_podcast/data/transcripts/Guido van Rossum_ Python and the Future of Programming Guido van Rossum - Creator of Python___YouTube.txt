@@ -1,1 +1,0 @@
-../../lex_podcast/data/transcripts/Guido van Rossum_ Python and the Future of Programming Guido van Rossum - Creator of Python___YouTube.txt

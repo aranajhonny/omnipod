@@ -1,1 +1,0 @@
-../../lex_podcast/data/transcripts/Dan Kokotov - Speech Recognition Engineer___YouTube.txt
