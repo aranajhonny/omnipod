@@ -1,0 +1,1 @@
+../../lex_podcast/data/transcripts/John Carmack - Legendary Programmer___YouTube.txt

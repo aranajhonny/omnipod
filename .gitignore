@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.venv*/
+venv/
+
+# Environment
+.env
+
+# Chainlit
+.chainlit/
+chainlit.md
+.files/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

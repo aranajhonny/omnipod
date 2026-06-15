@@ -1,0 +1,1 @@
+../../lex_podcast/data/transcripts/Juergen Schmidhuber_ Godel Machines_ Meta-Learning_ and LSTMs Juergen Schmidhuber - AI Research Pion___YouTube.txt

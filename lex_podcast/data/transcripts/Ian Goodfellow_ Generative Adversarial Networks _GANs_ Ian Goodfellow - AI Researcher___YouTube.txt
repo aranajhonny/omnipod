@@ -1,0 +1,1 @@
+../../lex_podcast/data/transcripts/Ian Goodfellow_ Generative Adversarial Networks _GANs_ Ian Goodfellow - AI Researcher___YouTube.txt
