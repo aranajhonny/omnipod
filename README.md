@@ -1,4 +1,4 @@
-# 🎙️ **OmniPod** — Chat with 700+ Podcast Transcripts
+# 🎙️ **OmniPod** — Chat with Podcast Transcripts
 
 > Turn any podcast corpus into a conversational AI. Ask questions, compare guests, generate essays. All answers grounded in real transcripts — zero hallucinations.
 
@@ -35,7 +35,7 @@
 ║         R E T R I E V A L   (sentence-transformers MPS GPU)     ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║  Query → 384d vector → Qdrant cosine search → Top-5 chunks     ║
-║  139,168 indexed chunks from 701 transcripts                    ║
+║  139,168 indexed chunks from transcripts                    ║
 ╚══════════════════════════════════════════════════════════════════╝
                          │
                          ▼
