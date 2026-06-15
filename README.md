@@ -1,7 +1,7 @@
 <h1 align="center">🎙️ OmniPod</h1>
 
 <p align="center">
-<strong>Chat with 700+ podcast episodes. Every answer cites its source.</strong>
+<strong>Chat with 936 podcast episodes. Every answer cites its source.</strong>
 </p>
 
 <p align="center">
@@ -11,7 +11,7 @@ Ask "What did Karpathy say about neural networks?" — get an answer with the ex
 <p align="center">
 <img src="https://img.shields.io/badge/python-3.13-blue" />
 <img src="https://img.shields.io/badge/chunks-19,140-green" />
-<img src="https://img.shields.io/badge/episodes-701-orange" />
+<img src="https://img.shields.io/badge/episodes-936-orange" />
 <img src="https://img.shields.io/badge/latency-~2s_M1_Pro-purple" />
 <img src="https://img.shields.io/badge/license-MIT-black" />
 </p>
@@ -50,7 +50,7 @@ You ask a question
          ▼
   ┌─────────────┐
   │  Retrieval   │  bge-small-en-v1.5 (384d) → Qdrant cosine
-  │  19,140      │  chunks from 701 Lex Fridman episodes
+  │  19,140      │  chunks from 936 Lex Fridman episodes
   │  chunks      │  Guest filtering via known-guests index
   └──────┬──────┘
          │
@@ -81,7 +81,7 @@ chainlit run app.py
 
 | Metric | Value |
 |---|---|
-| Episodes indexed | 701 Lex Fridman |
+| Episodes indexed | 936 Lex Fridman |
 | Chunks | 19,140 (512 chars, 128 overlap) |
 | Embedding dim | 384 (bge-small-en-v1.5, MPS GPU) |
 | Query embedding | ~100ms |
@@ -100,7 +100,7 @@ No YouTube API key needed. Two sources:
 ```bash
 cd lex_podcast
 pip install requests beautifulsoup4
-python run.py pipeline  # scrapes all 701 episodes
+python run.py pipeline  # scrapes all 936 episodes
 ```
 
 Output lands in `data/transcripts/`.
