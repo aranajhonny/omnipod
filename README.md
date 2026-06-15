@@ -1,53 +1,73 @@
-# 🎙️ **OmniPod** — Chat with Podcast Transcripts
+<h1 align="center">🎙️ OmniPod</h1>
 
-> Turn any podcast corpus into a conversational AI. Minimizes hallucinations via source grounding — every answer cites transcripts.
+<p align="center">
+<strong>Chat with 700+ podcast episodes. Every answer cites its source.</strong>
+</p>
 
-[![Python](https://img.shields.io/badge/python-3.13-blue)]()
-[![Chainlit](https://img.shields.io/badge/Chainlit-2.x-green)]()
-[![Qdrant](https://img.shields.io/badge/Qdrant-384d+cosine-red)]()
-[![License: MIT](https://img.shields.io/badge/license-MIT-purple)]()
+<p align="center">
+Ask "What did Karpathy say about neural networks?" — get an answer with the exact transcript chunk it came from. No hallucinations. No guessing.
+</p>
+
+<p align="center">
+<img src="https://img.shields.io/badge/python-3.13-blue" />
+<img src="https://img.shields.io/badge/chunks-19,140-green" />
+<img src="https://img.shields.io/badge/episodes-701-orange" />
+<img src="https://img.shields.io/badge/latency-~2s_M1_Pro-purple" />
+<img src="https://img.shields.io/badge/license-MIT-black" />
+</p>
+
+---
+
+<!-- SI TENÉS UN GIF O SCREENSHOT, VA ACÁ. ES LO PRIMERO QUE LA GENTE NECESITA VER. -->
+<!-- <p align="center"><img src="docs/demo.gif" width="700" /></p> -->
+
+## Why OmniPod?
+
+Most RAG chatbots hallucinate. You ask about a podcast, they invent quotes.
+
+OmniPod doesn't. Every response is **grounded** — verified against the actual transcript before it reaches you. If the source doesn't support the answer, it says so.
+
+**Three query types, one pipeline:**
+
+| Type | Example | Strategy |
+|---|---|---|
+| Factual | "What did Huberman say about sleep?" | Retrieve → Generate → Verify |
+| Synthetic | "Compare AI safety views across guests" | Map-Reduce → Deduplicate → Synthesize |
+| Generative | "Write an essay on consciousness from these episodes" | Plan → Draft → Ground |
+
+## How it works
 
 ```
-╔══════════════════════════════════════════════════════════════════╗
-║                        O M N I P O D                            ║
-║            Conversational RAG for Podcast Transcripts           ║
-╚══════════════════════════════════════════════════════════════════╝
-
-      👤 "What did Karpathy say about neural networks?"
-                         │
-                         ▼
-╔══════════════════════════════════════════════════════════════════╗
-║                    C H A I N L I T   U I                        ║
-║  port 8000 · WebSockets · Source cards                          ║
-╚══════════════════════════════════════════════════════════════════╝
-                         │
-                         ▼
-╔══════════════════════════════════════════════════════════════════╗
-║               R O U T E R   +   H A N D L E R S                 ║
-╠══════════════════════════════════════════════════════════════════╣
-║  classify_intent() ──┬── answer_factual()   RAG + verify        ║
-║  lru_cache(128)      ├── answer_synthetic() Map-Reduce + dedup  ║
-║  Semaphore(5)        └── answer_generative() Book planner→writer║
-╚══════════════════════════════════════════════════════════════════╝
-                         │
-                         ▼
-╔══════════════════════════════════════════════════════════════════╗
-║         R E T R I E V A L   (sentence-transformers MPS GPU)     ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Query → bge-small-en-v1.5 384d → Qdrant cosine search          ║
-║  19,140 indexed chunks · Lex Fridman transcripts            ║
-║  Guest filter via known-guests list from Qdrant                  ║
-╚══════════════════════════════════════════════════════════════════╝
-                         │
-                         ▼
-╔══════════════════════════════════════════════════════════════════╗
-║             DeepSeek V4 Flash  (OpenCode API)                    ║
-║  verify_groundedness() · @retry() · Source citations            ║
-╚══════════════════════════════════════════════════════════════════╝
+You ask a question
+        │
+        ▼
+  ┌─────────────┐
+  │   Router     │  classify_intent() — routes to the right handler
+  │  LRU cache   │  avoids re-embedding repeated queries
+  │  Semaphore   │  caps concurrent LLM calls at 5
+  └──────┬──────┘
+         │
+         ▼
+  ┌─────────────┐
+  │  Retrieval   │  bge-small-en-v1.5 (384d) → Qdrant cosine
+  │  19,140      │  chunks from 701 Lex Fridman episodes
+  │  chunks      │  Guest filtering via known-guests index
+  └──────┬──────┘
+         │
+         ▼
+  ┌─────────────┐
+  │  Generate +  │  DeepSeek V4 Flash via OpenCode API
+  │  Verify      │  verify_groundedness() — rejects ungrounded answers
+  └──────┬──────┘
+         │
+         ▼
+  Cited answer in Chainlit UI (localhost:8000)
 ```
+
+## 60-second setup
 
 ```bash
-git clone https://github.com/aranajhonny/omnipod && cd humans
+git clone https://github.com/aranajhonny/omnipod && cd omnipod
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 echo "OPENCODE_API_KEY=sk-your-key" > .env
@@ -57,57 +77,50 @@ chainlit run app.py
 # → http://localhost:8000
 ```
 
-## Data
+## Numbers that matter
 
 | Metric | Value |
-|--------|-------|
-| Transcripts | 701 Lex Fridman episodes — scrape with `core/transcript_fetcher.py` |
-| Chunks indexed | 19,140 (512 chars, 128 overlap) |
-| Vector dimensions | 384 (bge-small-en-v1.5, MPS GPU) |
-| Source files | 1,138 lines Python across 9 files |
+|---|---|
+| Episodes indexed | 701 Lex Fridman |
+| Chunks | 19,140 (512 chars, 128 overlap) |
+| Embedding dim | 384 (bge-small-en-v1.5, MPS GPU) |
+| Query embedding | ~100ms |
+| Vector search | ~50ms (cosine, 19K points) |
+| Full answer | ~2s on M1 Pro |
+| Full ingest | ~8 min |
+| Codebase | 1,138 lines Python, 9 files |
 
-## Scraper
+## Transcript scraper included
 
-`core/transcript_fetcher.py` downloads transcripts from two sources:
+No YouTube API key needed. Two sources:
 
-1. **lexfridman.com** — scrapes official transcript pages via `requests` + `BeautifulSoup`. ~114 episodes.
-2. **YouTube API** (free proxy) — for episodes without site transcripts, uses `youtubetranscript.pro`:
-   - `POST /api/youtube/metadata` → registers video ID
-   - `GET /api/youtube/transcript` → returns auto-captions as JSON
-
-No YouTube API key required. Output goes to `data/transcripts/`.
-
-<img width="617" height="606" alt="Captura de pantalla 2026-06-15 a la(s) 12 06 41 a m" src="https://github.com/user-attachments/assets/1f76e948-dc7c-421a-9c04-e77f64206b41" />
+- **lexfridman.com** — scrapes official transcript pages (requests + BeautifulSoup)
+- **YouTube** — uses free proxy at `youtubetranscript.pro` for auto-captions
 
 ```bash
-# Clone and scrape all 701 transcripts
 cd lex_podcast
 pip install requests beautifulsoup4
-python run.py pipeline
+python run.py pipeline  # scrapes all 701 episodes
 ```
 
-## Example Queries
+Output lands in `data/transcripts/`.
+
+## Example queries
 
 ```
 "What did Andrej Karpathy say about neural networks?"
 "Compare views on AI safety across all guests"
-"Write a short essay on human consciousness"
+"Write a short essay on human consciousness based on these episodes"
 "Summarize what Andrew Huberman says about sleep"
 ```
 
-## Performance (Apple M1 Pro)
+## Architecture decisions
 
-| Operation | Time |
-|-----------|------|
-| Query embedding | ~100ms (MPS) |
-| Qdrant search | ~50ms (cosine, 19K points) |
-| LLM response | ~2-5s (DeepSeek V4 Flash) |
-| Full ingest (139K chunks) | ~8 min |
+- **Why `bge-small-en-v1.5`?** 384-dim embeddings are fast to search and good enough for conversational podcast text. Runs locally on MPS GPU.
+- **Why Qdrant over Chroma?** Cosine search at 19K points in ~50ms. Filterable by guest metadata out of the box.
+- **Why intent routing?** Factual, synthetic, and generative queries need fundamentally different retrieval and generation strategies. One prompt fits all fails at scale.
+- **Why groundedness verification?** LLMs default to confident BS. `verify_groundedness()` forces the model to check its answer against the retrieved context before showing it to the user.
 
-<img width="790" height="459" alt="Captura de pantalla 2026-06-14 a la(s) 11 32 06 p m" src="https://github.com/user-attachments/assets/04303c01-0dbe-4916-9374-8f8e58a780b8" />
----
+## License
 
-<p align="center">
-  <b>MIT Licensed · 2026</b><br>
-  <sub>Built for the love of podcasts and knowledge</sub>
-</p>
+MIT
