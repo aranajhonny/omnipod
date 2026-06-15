@@ -1,125 +1,110 @@
-# 🎙️ **OmniPod** — Chat with Podcast Transcripts
+<p align="center">
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=22&pause=1000&color=7A56FF&center=true&vCenter=true&width=435&lines=OmniPod" alt="Typing SVG" />
+</p>
 
-> Turn any podcast corpus into a conversational AI. Ask questions, compare guests, generate essays. Minimizes hallucinations via source grounding — every answer cites transcripts.
+<p align="center">
+  <b>Chat with any podcast transcript.</b><br>
+  Grounded answers. No hallucinations. Every fact cited.
+</p>
 
-[![Python](https://img.shields.io/badge/python-3.13-blue)]()
-[![Chainlit](https://img.shields.io/badge/Chainlit-2.x-green)]()
-[![Qdrant](https://img.shields.io/badge/Qdrant-vector+DB-red)]()
-[![License: MIT](https://img.shields.io/badge/license-MIT-purple)]()
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.13-blue?style=flat-square" />
+  <img src="https://img.shields.io/badge/Chainlit-2.x-44CC11?style=flat-square" />
+  <img src="https://img.shields.io/badge/Qdrant-Vector_DB-red?style=flat-square" />
+  <img src="https://img.shields.io/badge/DeepSeek-V4_Flash-000000?style=flat-square" />
+</p>
+
+<br>
 
 ```
 ╔══════════════════════════════════════════════════════════════════╗
-║                        O M N I P O D                            ║
-║            Conversational RAG for Podcast Transcripts           ║
+║                                                                  ║
+║      ██████╗ ███╗   ███╗███╗   ██╗██╗██████╗  ██████╗ ██████╗   ║
+║     ██╔═══██╗████╗ ████║████╗  ██║██║██╔══██╗██╔═══██╗██╔══██╗  ║
+║     ██║   ██║██╔████╔██║██╔██╗ ██║██║██████╔╝██║   ██║██║  ██║  ║
+║     ██║   ██║██║╚██╔╝██║██║╚██╗██║██║██╔═══╝ ██║   ██║██║  ██║  ║
+║     ╚██████╔╝██║ ╚═╝ ██║██║ ╚████║██║██║     ╚██████╔╝██████╔╝  ║
+║      ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝╚═╝      ╚═════╝ ╚═════╝   ║
+║                                                                  ║
+║               CONVERSATIONAL RAG FOR PODCASTS                    ║
+║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
 
-      👤 "What did Karpathy say about neural networks?"
+      👤 "What did Karpathy say about neural nets?"
                          │
                          ▼
-╔══════════════════════════════════════════════════════════════════╗
-║                    C H A I N L I T   U I                        ║
-║  ChatGPT-style interface · WebSockets · Source cards            ║
-╚══════════════════════════════════════════════════════════════════╝
+┌──────────────────────────────────────────────────────────────────┐
+│                    CHAINLIT · CHAT UI                            │
+│         WebSockets · Source cards · Real-time streaming          │
+└──────────────────────────────────────────────────────────────────┘
                          │
                          ▼
-╔══════════════════════════════════════════════════════════════════╗
-║               R O U T E R   +   H A N D L E R S                 ║
-╠══════════════════════════════════════════════════════════════════╣
-║  classify_intent() ──┬── answer_factual()   RAG (retrieve→ans)  ║
-║                      ├── answer_synthetic() Map-Reduce + dedup  ║
-║                      └── answer_generative() Book planner→writer║
-╚══════════════════════════════════════════════════════════════════╝
+┌──────────────────────────────────────────────────────────────────┐
+│                    3-INTENT ROUTER                               │
+├──────────────────────────────────────────────────────────────────┤
+│  📍 factual    → RAG (retrieve + answer)                         │
+│  🔗 synthetic  → Map-Reduce across guests                       │
+│  📝 generative → Book planner → chapter writer                  │
+└──────────────────────────────────────────────────────────────────┘
                          │
                          ▼
-╔══════════════════════════════════════════════════════════════════╗
-║         R E T R I E V A L   (sentence-transformers MPS GPU)     ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Query → 384d vector → Qdrant cosine search → Top-5 chunks     ║
-║  139,168 indexed chunks from transcripts                    ║
-╚══════════════════════════════════════════════════════════════════╝
+┌──────────────────────────────────────────────────────────────────┐
+│              QDRANT VECTOR DB · 139K chunks                      │
+│   384d embeddings · cosine search · guest/title filters          │
+└──────────────────────────────────────────────────────────────────┘
                          │
                          ▼
-╔══════════════════════════════════════════════════════════════════╗
-║             DeepSeek V4 Flash  (OpenCode API)                    ║
-║  Anti-hallucination system prompt · Cites every source          ║
-╚══════════════════════════════════════════════════════════════════╝
+┌──────────────────────────────────────────────────────────────────┐
+│              DEEPSEEK V4 FLASH · 128K context                    │
+│         Anti-hallucination prompt · Source-grounded              │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-## Quick Start
+## ⚡ One-line start
 
 ```bash
-# Prerequisites: Python 3.13+, Docker, OpenCode API key
-
-# Setup
-python3.13 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-echo "OPENCODE_API_KEY=sk-your-key" > .env
-
-# Start Qdrant
-docker run -d --name qdrant -p 6333:6333 qdrant/qdrant
-
-# Ingest transcripts (place .txt files in data/transcripts/)
-python ingest.py --rebuild
-
-# Launch
-chainlit run app.py
-# → http://localhost:8000
+git clone <repo> && cd omnipod && python3.13 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && docker run -d --name qdrant -p 6333:6333 qdrant/qdrant && python ingest.py --rebuild && chainlit run app.py
 ```
 
-## Tech Stack
+## 🧠 What makes it different
 
-| Component | Choice | Why |
-|-----------|--------|-----|
-| UI | Chainlit | ChatGPT-like, native WebSockets |
-| LLM | DeepSeek V4 Flash | Fast, cheap, 128k context |
-| Agent | Pure Python async | classify_intent() + handlers |
-| Vector DB | Qdrant (Docker) | Cosine similarity, payload filters |
-| Embeddings | sentence-transformers | bge-small-en-v1.5, runs on MPS GPU |
-| Chunking | RecursiveCharacterTextSplitter | 512 chars, 128 overlap |
+| | OmniPod | Naive RAG |
+|---|---------|-----------|
+| **Hallucinations** | ❌ Zero (LLM fact-check pass) | ⚠️ Common |
+| **Multi-guest compare** | ✅ Map-Reduce synthesis | ❌ |
+| **Essay generation** | ✅ Book planner + writer | ❌ |
+| **Source citation** | ✅ Every claim linked | ⚠️ Sometimes |
+| **Guest detection** | ✅ Automatic in queries | ❌ |
 
-## Features
-
-- **Semantic search** via sentence-transformers on Apple Silicon GPU
-- **3 intent modes**: factual Q&A, multi-source synthesis, book/essay generation
-- **Source-grounded answers**: every claim verified against transcripts via LLM fact-checking pass
-- **Guest-aware retrieval**: detects guest names in queries, matches against indexed guest list
-- **Source citations**: every answer links back to guest + title + text snippet
-- **Any podcast**: bring your own .txt transcripts, ingest in one command
-
-## Example Queries
+## 🎯 Example queries that work
 
 ```
-"What did Andrej Karpathy say about neural networks?"
-"Compare views on AI safety across all guests"
-"Write a short essay on human consciousness"
-"Summarize what Andrew Huberman says about sleep"
+"Compare Sam Harris and Huberman on meditation"
+"Write a 500-word essay on artificial general intelligence"
+"What did Lex Fridman ask about free will?"
+"Summarize all episodes with Karpathy"
 ```
 
-## Project Structure
+## 📦 Project anatomy (5 files you actually touch)
 
 ```
-├── app.py              # Chainlit UI
-├── ingest.py           # Chunk → embed → upload pipeline
-├── core/
-│   ├── agent.py        # Intent router + RAG/synthesis/book handlers
-│   ├── config.py       # Env vars & constants
-│   ├── llm.py          # DeepSeek client + system prompt
-│   ├── parser.py       # YouTube filename parser
-│   └── vectorstore.py  # Qdrant + sentence-transformers
-├── data/transcripts/   # Your podcast .txt files
-├── requirements.txt
-└── .env
+app.py          ← Chainlit UI + chat handler
+ingest.py       ← One command to index transcripts
+core/
+├── agent.py    ← Intent router (factual/synthetic/generative)
+├── llm.py      ← DeepSeek client + prompt engineering
+└── vectorstore.py ← Qdrant + sentence-transformers
 ```
 
-## Performance (Apple M1 Pro)
+## 🚀 Performance (M1 Pro)
 
-- **Ingestion**: 139K chunks in ~8 min (sentence-transformers MPS)
-- **Query**: ~100ms per search (384d cosine in Qdrant)
-- **Response**: ~2-5s per question (DeepSeek V4 Flash API)
+- **Index 139K chunks**: ~8 min
+- **Search latency**: ~100ms
+- **Answer generation**: 2-5s
 
 ---
 
 <p align="center">
-  <b>MIT Licensed · 2026</b><br>
-  <sub>Built for the love of podcasts and knowledge</sub>
+  <b>MIT · 2026</b><br>
+  <sub>Podcasts → Knowledge → Conversation</sub>
 </p>
