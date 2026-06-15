@@ -3,15 +3,19 @@
 Removed LangGraph overhead. Pure async functions with explicit routing.
 """
 
+import asyncio
+import functools
 import json
 
 from langchain_core.messages import HumanMessage
 
-from core.config import HYBRID_TOP_K, RERANKER_TOP_K, SUB_QUERIES_COUNT
+from core.config import COLLECTION_NAME, HYBRID_TOP_K, RERANKER_TOP_K, SUB_QUERIES_COUNT
 from core.llm import SYSTEM_PROMPT, get_json_llm, get_llm, verify_groundedness
 from core.vectorstore import get_qdrant_client, hybrid_search
 
 _qdrant_client = None
+_known_guests: list[str] | None = None
+_llm_semaphore = asyncio.Semaphore(5)  # Max 5 concurrent LLM calls
 
 
 def _get_client():
@@ -46,13 +50,52 @@ def _format_context(ctx: list[dict]) -> str:
     return "\n---\n".join(parts)
 
 
-# ── Guest extraction (heuristic) ────────────────────────────────
+# ── Guest extraction ──────────────────────────────────────────
+
+_guest_cache: list[str] | None = None
+
+
+def get_known_guests() -> list[str]:
+    """Fetch all unique guest names from the vector DB."""
+    global _guest_cache
+    if _guest_cache is not None:
+        return _guest_cache
+    try:
+        client = _get_client()
+        from qdrant_client import models
+
+        # Scroll all points, collect unique guests
+        guests = set()
+        next_offset = None
+        while True:
+            points, next_offset = client.scroll(
+                collection_name=COLLECTION_NAME,
+                limit=1000,
+                with_payload=["guest"],
+                offset=next_offset,
+            )
+            for p in points:
+                g = p.payload.get("guest", "")
+                if g:
+                    guests.add(g)
+            if next_offset is None:
+                break
+        _guest_cache = sorted(guests)
+    except Exception:
+        _guest_cache = []
+    return _guest_cache
 
 
 def extract_guest(query: str) -> str | None:
-    """Extract potential guest name from a query using pattern matching.
-    This is a simple heuristic, not a full NER system.
+    """Find a known guest name mentioned in the query.
+    Falls back to heuristic pattern matching if not found.
     """
+    q_lower = query.lower()
+    # 1. Check against known guest list from Qdrant
+    for guest in get_known_guests():
+        if guest.lower() in q_lower:
+            return guest
+    # 2. Heuristic regex fallback
     import re
 
     patterns = [
@@ -64,6 +107,14 @@ def extract_guest(query: str) -> str | None:
         if match:
             return match.group(1)
     return None
+
+
+async def _rate_limited_llm(llm_func, messages):
+    """Call LLM with semaphore-based rate limiting."""
+    async with _llm_semaphore:
+        return await asyncio.get_event_loop().run_in_executor(
+            None, lambda: llm_func(messages)
+        )
 
 
 # ── Intent router ───────────────────────────────────────────────
@@ -80,14 +131,19 @@ Respond in JSON format: {{"intent": "factual" | "synthetic" | "generative"}}
 User query: {query}"""
 
 
-async def classify_intent(query: str) -> str:
-    """Classify query intent using the LLM."""
+@functools.lru_cache(maxsize=128)
+def _classify_intent_cached(query: str) -> str:
+    """Synchronous cached intent classification."""
     llm = get_json_llm()
     response = llm.invoke([HumanMessage(content=ROUTER_PROMPT.format(query=query))])
     try:
         return json.loads(response.content).get("intent", "factual")
     except (json.JSONDecodeError, AttributeError):
         return "factual"
+
+
+async def classify_intent(query: str) -> str:
+    return _classify_intent_cached(query)
 
 
 # ── Factual RAG ─────────────────────────────────────────────────

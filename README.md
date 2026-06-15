@@ -1,6 +1,6 @@
 # 🎙️ **OmniPod** — Chat with Podcast Transcripts
 
-> Turn any podcast corpus into a conversational AI. Ask questions, compare guests, generate essays. All answers grounded in real transcripts — zero hallucinations.
+> Turn any podcast corpus into a conversational AI. Ask questions, compare guests, generate essays. Minimizes hallucinations via source grounding — every answer cites transcripts.
 
 [![Python](https://img.shields.io/badge/python-3.13-blue)]()
 [![Chainlit](https://img.shields.io/badge/Chainlit-2.x-green)]()
@@ -81,9 +81,9 @@ chainlit run app.py
 
 - **Semantic search** via sentence-transformers on Apple Silicon GPU
 - **3 intent modes**: factual Q&A, multi-source synthesis, book/essay generation
-- **Guest-aware retrieval**: detects guest names in queries, filters by speaker
+- **Source-grounded answers**: every claim verified against transcripts via LLM fact-checking pass
+- **Guest-aware retrieval**: detects guest names in queries, matches against indexed guest list
 - **Source citations**: every answer links back to guest + title + text snippet
-- **Anti-hallucination**: strict system prompt forces answer-only-from-context
 - **Any podcast**: bring your own .txt transcripts, ingest in one command
 
 ## Example Queries
