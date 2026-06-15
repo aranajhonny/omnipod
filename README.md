@@ -71,10 +71,15 @@ chainlit run app.py
 
 `core/transcript_fetcher.py` downloads transcripts from two sources:
 
-1. **lexfridman.com** — scrapes official transcript pages via requests + BeautifulSoup. Covers ~114 episodes.
-2. **YouTube API** — for episodes without site transcripts, calls `youtubetranscript.pro` API to fetch auto-generated captions. Covers ~382 more episodes.
+1. **lexfridman.com** — scrapes official transcript pages via `requests` + `BeautifulSoup`. These are human-written transcripts for ~114 episodes.
 
-Both outputs are `.txt` files in `data/transcripts/`. Then `python ingest.py --rebuild` chunks and indexes them into Qdrant.
+2. **YouTube API** (free, no key needed) — for the ~382 episodes without site transcripts, it uses `youtubetranscript.pro`, a free proxy that extracts YouTube captions:
+   - `POST /api/youtube/metadata` — registers the video ID with the session
+   - `GET /api/youtube/transcript` — returns the auto-generated captions as JSON
+   
+   This avoids needing a YouTube Data API key or paid transcription service.
+
+Both outputs are `.txt` files. Then `python ingest.py --rebuild` chunks and indexes them into Qdrant.
 
 ## Example Queries
 
