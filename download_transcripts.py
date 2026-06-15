@@ -1,10 +1,8 @@
-"""Parallel transcript downloader for Lex Fridman Podcast."""
+"""Download all transcripts sequentially (avoids rate limiting)."""
 
-import concurrent.futures
 import json
 import os
 import re
-import sys
 import time
 
 import requests
@@ -13,7 +11,6 @@ METADATA_API = "https://youtubetranscript.pro/api/youtube/metadata"
 TRANSCRIPT_API = "https://youtubetranscript.pro/api/youtube/transcript"
 SESSION_ID = "cde9e447-a2b3-4266-9502-0098600315fe"
 OUTPUT_DIR = "data/transcripts"
-MAX_WORKERS = 10
 
 
 def extract_video_id(url: str) -> str | None:
@@ -23,85 +20,83 @@ def extract_video_id(url: str) -> str | None:
     return m.group(1) if m else None
 
 
-def download_one(ep: dict) -> tuple[str, bool]:
-    url = ep.get("youtube_url") or ep.get("episode_url", "")
-    video_id = extract_video_id(url)
-    if not video_id:
-        return ep.get("title", "?"), False
-
-    title = ep.get("title", f"episode_{video_id}")
-    safe_name = re.sub(r"[^\w\s\-]", "", title).strip()[:100]
-    filename = os.path.join(OUTPUT_DIR, f"{safe_name}___YouTube.txt")
-
-    if os.path.exists(filename):
-        return safe_name, True  # already exists
-
-    try:
-        # Register
-        r1 = requests.post(METADATA_API, json={"videoID": video_id}, timeout=15)
-        if not r1.ok:
-            return safe_name, False
-
-        # Fetch
-        r2 = requests.get(
-            TRANSCRIPT_API,
-            params={
-                "videoId": video_id,
-                "userId": "",
-                "sessionId": SESSION_ID,
-            },
-            timeout=30,
-        )
-        if not r2.ok:
-            return safe_name, False
-
-        data = r2.json()
-        if not data.get("success"):
-            return safe_name, False
-
-        items = data.get("data", {}).get("response", [])
-        if not items:
-            return safe_name, False
-
-        text = " ".join(item["text"] for item in items if "text" in item)
-        if len(text.strip()) < 100:
-            return safe_name, False
-
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(text.strip())
-
-        return safe_name, True
-
-    except Exception:
-        return safe_name, False
-
-
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     with open("lex_podcast/data/episodes.json") as f:
         episodes = json.load(f)
 
-    print(f"Total episodes: {len(episodes)}")
-    print(f"Downloading to {OUTPUT_DIR}/ with {MAX_WORKERS} workers\n")
+    existing = set(os.listdir(OUTPUT_DIR))
+    success = 0
+    fail = 0
+    skip = 0
 
-    done = len([f for f in os.listdir(OUTPUT_DIR) if f.endswith(".txt")])
-    total = len(episodes)
-    success = done
-    failed = 0
+    for i, ep in enumerate(episodes, 1):
+        url = ep.get("youtube_url") or ep.get("episode_url", "")
+        video_id = extract_video_id(url)
+        if not video_id:
+            fail += 1
+            continue
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {pool.submit(download_one, ep): ep for ep in episodes}
-        for i, future in enumerate(concurrent.futures.as_completed(futures), 1):
-            name, ok = future.result()
-            if ok:
-                success += 1
-            else:
-                failed += 1
-            if i % 25 == 0 or i == total:
-                print(f"  [{i}/{total}] OK={success} FAIL={failed}")
+        title = ep.get("title", f"ep_{video_id}")
+        safe = re.sub(r"[^\w\s\-]", "", title).strip()[:100]
+        fname = f"{safe}___YouTube.txt"
 
-    print(f"\nDone: {success} OK, {failed} FAIL ({(success / total) * 100:.0f}%)")
+        if fname in existing:
+            skip += 1
+            continue
+
+        time.sleep(1.0)
+
+        try:
+            r1 = requests.post(METADATA_API, json={"videoID": video_id}, timeout=15)
+            if not r1.ok:
+                fail += 1
+                print(f"  [{i}/{len(episodes)}] FAIL metadata {video_id}")
+                continue
+
+            r2 = requests.get(
+                TRANSCRIPT_API,
+                params={
+                    "videoId": video_id,
+                    "userId": "",
+                    "sessionId": SESSION_ID,
+                },
+                timeout=30,
+            )
+            if not r2.ok:
+                fail += 1
+                print(f"  [{i}/{len(episodes)}] FAIL transcript {video_id}")
+                continue
+
+            data = r2.json()
+            if not data.get("success"):
+                fail += 1
+                print(f"  [{i}/{len(episodes)}] FAIL no success {video_id}")
+                continue
+
+            items = data.get("data", {}).get("response", [])
+            if not items:
+                fail += 1
+                continue
+
+            text = " ".join(item["text"] for item in items if "text" in item)
+            if len(text.strip()) < 100:
+                fail += 1
+                continue
+
+            with open(os.path.join(OUTPUT_DIR, fname), "w", encoding="utf-8") as f:
+                f.write(text.strip())
+
+            success += 1
+            if success % 25 == 0:
+                print(f"  [{i}/{len(episodes)}] OK={success} FAIL={fail} SKIP={skip}")
+
+        except Exception as e:
+            fail += 1
+            print(f"  [{i}/{len(episodes)}] ERROR {video_id}: {e}")
+
+    print(f"\n✅ Done: {success} OK, {fail} FAIL, {skip} SKIP / {len(episodes)} total")
 
 
 if __name__ == "__main__":
