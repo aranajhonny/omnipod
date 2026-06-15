@@ -61,7 +61,7 @@ chainlit run app.py
 
 | Metric | Value |
 |--------|-------|
-| Transcripts | 701 (Lex Fridman Podcast) |
+| Transcripts | 701 (Lex Fridman Podcast, scraped via `transcript_fetcher.py`) |
 | Chunks indexed | 19,140 (512 chars, 128 overlap) |
 | Vector dimensions | 384 (bge-small-en-v1.5, MPS GPU) |
 | Source files | 1,138 lines Python across 9 files |
